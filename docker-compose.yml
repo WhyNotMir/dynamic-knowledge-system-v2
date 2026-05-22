@@ -46,6 +46,25 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build:
+      context: ./backend
+    command: arq app.workers.ingestion_worker.WorkerSettings
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://dks:dks_secret@db:5432/dks_db
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pgdata:
   uploads:

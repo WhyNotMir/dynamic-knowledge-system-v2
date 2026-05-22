@@ -8,7 +8,7 @@ from app.models.article_candidate import ArticleCandidate
 from app.models.source_fragment import SourceFragment
 from app.models.structure_proposal import StructureProposal
 from app.repositories.projects import ProjectRepository
-from app.repositories.structure_repository import StructureRepository
+from app.repositories.structure import StructureRepository
 
 
 class ProjectNotFoundError(RuntimeError):

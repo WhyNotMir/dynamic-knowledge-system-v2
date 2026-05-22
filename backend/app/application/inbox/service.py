@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.structure.types import ProposalStatus
 from app.repositories.projects import ProjectRepository
-from app.repositories.structure_repository import StructureRepository
+from app.repositories.structure import StructureRepository
 
 
 class ProjectNotFoundError(RuntimeError):
