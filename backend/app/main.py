@@ -6,6 +6,7 @@ from arq.connections import RedisSettings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.inbox import router as inbox_router
 from app.api.projects import router as projects_router
 from app.api.sources import router as sources_router
 from app.api.structure import router as structure_router
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(sources_router)
     app.include_router(structure_router)
+    app.include_router(inbox_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

@@ -1,9 +1,28 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.domain.structure.types import CandidateStatus, ProposalStatus
+
+
+class UpdateCandidateRequest(BaseModel):
+    title: str | None = None
+    status: CandidateStatus | None = None
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Title must not be blank")
+        return stripped
+
+
+class ConfirmAllResponse(BaseModel):
+    updated_count: int
 
 
 class ArticleCandidateFragmentResponse(BaseModel):

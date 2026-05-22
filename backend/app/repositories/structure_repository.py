@@ -8,7 +8,7 @@ from app.models.article_candidate import ArticleCandidate, ArticleCandidateFragm
 from app.models.source import Source
 from app.models.source_fragment import SourceFragment
 from app.models.structure_proposal import StructureProposal
-from app.domain.structure.types import ProposalStatus
+from app.domain.structure.types import CandidateStatus, ProposalStatus
 
 
 class StructureRepository:
@@ -80,6 +80,67 @@ class StructureRepository:
         await self.db.flush()
         await self.db.refresh(proposal)
         return proposal
+
+    async def get_project_candidate(
+        self,
+        project_id: uuid.UUID,
+        candidate_id: uuid.UUID,
+    ) -> ArticleCandidate | None:
+        result = await self.db.execute(
+            select(ArticleCandidate)
+            .join(StructureProposal)
+            .where(
+                ArticleCandidate.id == candidate_id,
+                StructureProposal.project_id == project_id,
+            )
+            .options(
+                selectinload(ArticleCandidate.fragment_links)
+                .selectinload(ArticleCandidateFragment.fragment)
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_candidate(
+        self,
+        candidate: ArticleCandidate,
+        *,
+        title: str | None = None,
+        status: CandidateStatus | None = None,
+    ) -> ArticleCandidate:
+        if title is not None:
+            candidate.title = title
+        if status is not None:
+            candidate.status = status
+
+        await self.db.flush()
+        await self.db.refresh(candidate)
+        return candidate
+
+    async def confirm_all_proposal_candidates(
+        self,
+        project_id: uuid.UUID,
+        proposal_id: uuid.UUID,
+    ) -> int | None:
+        result = await self.db.execute(
+            select(StructureProposal)
+            .where(
+                StructureProposal.id == proposal_id,
+                StructureProposal.project_id == project_id,
+            )
+            .options(selectinload(StructureProposal.candidates))
+        )
+        proposal = result.scalar_one_or_none()
+        if proposal is None:
+            return None
+
+        updated_count = 0
+        for candidate in proposal.candidates:
+            if candidate.status == CandidateStatus.PROPOSED:
+                candidate.status = CandidateStatus.CONFIRMED
+                updated_count += 1
+
+        await self.db.flush()
+        return updated_count
 
     async def list_project_proposals(
         self,

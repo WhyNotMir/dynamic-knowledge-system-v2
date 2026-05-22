@@ -4,11 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.structure.service import (
+    ArticleCandidateNotFoundError,
     ProjectNotFoundError,
     StructureProposalNotFoundError,
+    confirm_all_candidates,
     get_structure_proposal,
     list_structure_proposals,
     propose_structure,
+    update_candidate,
 )
 from app.database import get_db
 from app.models.article_candidate import ArticleCandidate
@@ -17,8 +20,10 @@ from app.schemas.structure import (
     ArticleCandidateDetailResponse,
     ArticleCandidateFragmentResponse,
     ArticleCandidateResponse,
+    ConfirmAllResponse,
     StructureProposalDetailResponse,
     StructureProposalResponse,
+    UpdateCandidateRequest,
 )
 
 
@@ -70,6 +75,49 @@ async def get_proposal(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return _proposal_detail_response(proposal)
+
+
+@router.patch(
+    "/candidates/{candidate_id}",
+    response_model=ArticleCandidateDetailResponse,
+)
+async def patch_candidate(
+    project_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    payload: UpdateCandidateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ArticleCandidateDetailResponse:
+    try:
+        candidate = await update_candidate(
+            project_id,
+            candidate_id,
+            db,
+            title=payload.title,
+            status=payload.status,
+        )
+    except (ProjectNotFoundError, ArticleCandidateNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    await db.commit()
+    return _candidate_detail_response(candidate)
+
+
+@router.post(
+    "/proposals/{proposal_id}/confirm-all",
+    response_model=ConfirmAllResponse,
+)
+async def confirm_all_proposal_candidates(
+    project_id: uuid.UUID,
+    proposal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> ConfirmAllResponse:
+    try:
+        updated_count = await confirm_all_candidates(project_id, proposal_id, db)
+    except (ProjectNotFoundError, StructureProposalNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    await db.commit()
+    return ConfirmAllResponse(updated_count=updated_count)
 
 
 def _proposal_response(proposal: StructureProposal) -> StructureProposalResponse:

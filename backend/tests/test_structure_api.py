@@ -1,8 +1,11 @@
 from app.domain.ingestion.types import ElementType
 from app.domain.source import SourceStatus
+from app.domain.structure.types import CandidateStatus, ProposalStatus
+from app.models.article_candidate import ArticleCandidate
 from app.models.project import Project
 from app.models.source import Source
 from app.models.source_fragment import SourceFragment
+from app.models.structure_proposal import StructureProposal
 
 
 async def _create_project_with_source(db, *, name: str = "Structure Test"):
@@ -281,3 +284,180 @@ async def test_propose_keeps_candidates_source_scoped(client, db):
         "First source paragraph.",
         "Second source paragraph.",
     ]
+
+
+async def test_update_candidate_renames_candidate(client, db):
+    proposal = await _create_proposal_with_candidate(db)
+    candidate = proposal.candidates[0]
+
+    response = await client.patch(
+        f"/projects/{proposal.project_id}/structure/candidates/{candidate.id}",
+        json={"title": "Renamed Candidate"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["title"] == "Renamed Candidate"
+    assert payload["status"] == "proposed"
+
+
+async def test_update_candidate_confirms_candidate(client, db):
+    proposal = await _create_proposal_with_candidate(db)
+    candidate = proposal.candidates[0]
+
+    response = await client.patch(
+        f"/projects/{proposal.project_id}/structure/candidates/{candidate.id}",
+        json={"status": "confirmed"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "confirmed"
+
+
+async def test_update_candidate_rejects_candidate(client, db):
+    proposal = await _create_proposal_with_candidate(db)
+    candidate = proposal.candidates[0]
+
+    response = await client.patch(
+        f"/projects/{proposal.project_id}/structure/candidates/{candidate.id}",
+        json={"status": "rejected"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "rejected"
+
+
+async def test_update_candidate_from_other_project_returns_404(client, db):
+    proposal = await _create_proposal_with_candidate(db)
+    other_project = Project(name="Other Project")
+    db.add(other_project)
+    await db.commit()
+    candidate = proposal.candidates[0]
+
+    response = await client.patch(
+        f"/projects/{other_project.id}/structure/candidates/{candidate.id}",
+        json={"status": "confirmed"},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_confirm_all_confirms_only_proposed_candidates(client, db):
+    proposal = await _create_proposal_with_candidates(
+        db,
+        [
+            ("Proposed Candidate", CandidateStatus.PROPOSED),
+            ("Confirmed Candidate", CandidateStatus.CONFIRMED),
+            ("Rejected Candidate", CandidateStatus.REJECTED),
+        ],
+    )
+
+    response = await client.post(
+        f"/projects/{proposal.project_id}/structure/proposals/{proposal.id}/confirm-all"
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"updated_count": 1}
+
+    detail_response = await client.get(
+        f"/projects/{proposal.project_id}/structure/proposals/{proposal.id}"
+    )
+    assert detail_response.status_code == 200
+    assert [candidate["status"] for candidate in detail_response.json()["candidates"]] == [
+        "confirmed",
+        "confirmed",
+        "rejected",
+    ]
+
+
+async def test_confirm_all_unknown_proposal_returns_404(client, db):
+    project = Project(name="Unknown Proposal Test")
+    db.add(project)
+    await db.commit()
+
+    response = await client.post(
+        f"/projects/{project.id}/structure/proposals/00000000-0000-0000-0000-000000000001/confirm-all"
+    )
+
+    assert response.status_code == 404
+
+
+async def test_inbox_lists_ready_structure_proposals(client, db):
+    proposal = await _create_proposal_with_candidate(db)
+
+    response = await client.get(f"/projects/{proposal.project_id}/inbox")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == [
+        {
+            "id": str(proposal.id),
+            "project_id": str(proposal.project_id),
+            "type": "structure_proposal",
+            "status": "ready",
+            "title": "Review generated article candidates",
+            "candidate_count": 1,
+            "created_at": proposal.created_at.isoformat().replace("+00:00", "Z"),
+            "target_id": str(proposal.id),
+        }
+    ]
+
+
+async def test_inbox_empty_when_no_proposals(client, db):
+    project = Project(name="Empty Inbox Test")
+    db.add(project)
+    await db.commit()
+
+    response = await client.get(f"/projects/{project.id}/inbox")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_inbox_does_not_show_reviewed_proposals(client, db):
+    proposal = await _create_proposal_with_candidate(db)
+    proposal.status = ProposalStatus.REVIEWED
+    await db.commit()
+
+    response = await client.get(f"/projects/{proposal.project_id}/inbox")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def _create_proposal_with_candidate(db) -> StructureProposal:
+    return await _create_proposal_with_candidates(
+        db,
+        [("Candidate", CandidateStatus.PROPOSED)],
+    )
+
+
+async def _create_proposal_with_candidates(
+    db,
+    candidates: list[tuple[str, CandidateStatus]],
+) -> StructureProposal:
+    project = Project(name="Candidate Review Test")
+    db.add(project)
+    await db.flush()
+
+    proposal = StructureProposal(
+        project_id=project.id,
+        status=ProposalStatus.READY,
+        candidate_count=len(candidates),
+    )
+    db.add(proposal)
+    await db.flush()
+
+    for index, (title, status) in enumerate(candidates):
+        db.add(
+            ArticleCandidate(
+                proposal_id=proposal.id,
+                title=title,
+                source_section_path=title,
+                status=status,
+                suggested_order=index,
+            )
+        )
+
+    await db.commit()
+    await db.refresh(proposal, ["candidates"])
+    return proposal
