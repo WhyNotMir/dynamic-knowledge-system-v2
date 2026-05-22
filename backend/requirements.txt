@@ -1,0 +1,31 @@
+# Web
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# Database
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
+alembic==1.13.1
+
+# Validation / config
+pydantic==2.8.2
+pydantic-settings==2.14.1
+
+# Document parsing
+docling==2.93.0
+
+# Background jobs
+arq==0.26.1
+redis==5.0.4
+
+# HTTP / files
+httpx==0.28.1
+aiofiles==23.2.1
+
+# Observability
+loguru==0.7.2
+
+# Testingыуду
+pytest==8.2.0
+pytest-asyncio==0.24.0
