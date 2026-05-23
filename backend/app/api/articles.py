@@ -98,6 +98,8 @@ def _article_block_response(block: ArticleBlock) -> ArticleBlockResponse:
         id=block.id,
         article_id=block.article_id,
         fragment_id=block.fragment_id,
+        source_title=block.fragment.source.title,
+        source_filename=block.fragment.source.filename,
         content=block.content,
         element_type=block.element_type,
         position_index=block.position_index,

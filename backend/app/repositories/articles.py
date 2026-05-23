@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.article import Article, ArticleBlock
 from app.models.article_candidate import ArticleCandidate, ArticleCandidateFragment
+from app.models.source_fragment import SourceFragment
 
 
 class ArticleRepository:
@@ -74,7 +75,11 @@ class ArticleRepository:
                 Article.id == article_id,
                 Article.project_id == project_id,
             )
-            .options(selectinload(Article.blocks))
+            .options(
+                selectinload(Article.blocks)
+                .selectinload(ArticleBlock.fragment)
+                .selectinload(SourceFragment.source)
+            )
         )
         return result.scalar_one_or_none()
 

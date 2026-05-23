@@ -49,18 +49,20 @@ async def upload_source(
             status_code=503,
             detail="Failed to enqueue source ingestion",
         ) from exc
-    return source
+    return _source_response(source)
 
 
 @router.get("", response_model=list[SourceResponse])
 async def list_sources(
     project_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-) -> list[Source]:
+) -> list[SourceResponse]:
     try:
-        return await list_project_sources(project_id, db)
+        sources = await list_project_sources(project_id, db)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return [_source_response(source) for source in sources]
 
 
 @router.get("/{source_id}", response_model=SourceResponse)
@@ -68,11 +70,13 @@ async def get_source(
     project_id: uuid.UUID,
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-) -> Source:
+) -> SourceResponse:
     try:
-        return await get_project_source(project_id, source_id, db)
+        source = await get_project_source(project_id, source_id, db)
     except (ProjectNotFoundError, SourceNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return _source_response(source)
 
 
 @router.get("/{source_id}/fragments", response_model=list[SourceFragmentResponse])
@@ -85,3 +89,24 @@ async def get_source_fragments(
         return await list_source_fragments(project_id, source_id, db)
     except (ProjectNotFoundError, SourceNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _source_response(source: Source) -> SourceResponse:
+    fragments = list(source.fragments) if "fragments" in source.__dict__ else []
+    pages = {
+        fragment.page_number
+        for fragment in fragments
+        if fragment.page_number is not None
+    }
+    return SourceResponse(
+        id=source.id,
+        project_id=source.project_id,
+        filename=source.filename,
+        title=source.title,
+        status=source.status,
+        fragment_count=len(fragments),
+        page_count=len(pages),
+        error_message=source.error_message,
+        created_at=source.created_at,
+        updated_at=source.updated_at,
+    )

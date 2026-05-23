@@ -13,6 +13,8 @@ class SourceResponse(BaseModel):
     filename: str
     title: str | None = None
     status: SourceStatus
+    fragment_count: int = 0
+    page_count: int = 0
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime

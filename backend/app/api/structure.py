@@ -167,6 +167,7 @@ def _candidate_response(candidate: ArticleCandidate) -> ArticleCandidateResponse
         status=candidate.status,
         suggested_order=candidate.suggested_order,
         created_at=candidate.created_at,
+        fragments=_candidate_fragments(candidate),
     )
 
 
@@ -174,16 +175,21 @@ def _candidate_detail_response(
     candidate: ArticleCandidate,
 ) -> ArticleCandidateDetailResponse:
     return ArticleCandidateDetailResponse(
-        **_candidate_response(candidate).model_dump(),
-        fragments=[
-            ArticleCandidateFragmentResponse(
-                fragment_id=link.fragment_id,
-                position_index=link.position_index,
-                content=link.fragment.content,
-            )
-            for link in sorted(
-                candidate.fragment_links,
-                key=lambda link: link.position_index,
-            )
-        ],
+        **_candidate_response(candidate).model_dump()
     )
+
+
+def _candidate_fragments(
+    candidate: ArticleCandidate,
+) -> list[ArticleCandidateFragmentResponse]:
+    return [
+        ArticleCandidateFragmentResponse(
+            fragment_id=link.fragment_id,
+            position_index=link.position_index,
+            content=link.fragment.content,
+        )
+        for link in sorted(
+            candidate.fragment_links,
+            key=lambda link: link.position_index,
+        )
+    ]

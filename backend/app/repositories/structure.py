@@ -150,7 +150,11 @@ class StructureRepository:
             select(StructureProposal)
             .where(StructureProposal.project_id == project_id)
             .order_by(StructureProposal.created_at.desc())
-            .options(selectinload(StructureProposal.candidates))
+            .options(
+                selectinload(StructureProposal.candidates)
+                .selectinload(ArticleCandidate.fragment_links)
+                .selectinload(ArticleCandidateFragment.fragment)
+            )
         )
         return list(result.scalars().all())
 

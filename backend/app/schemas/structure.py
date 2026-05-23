@@ -39,12 +39,13 @@ class ArticleCandidateResponse(BaseModel):
     status: CandidateStatus
     suggested_order: int
     created_at: datetime
+    fragments: list[ArticleCandidateFragmentResponse] = []
 
     model_config = {"from_attributes": True}
 
 
 class ArticleCandidateDetailResponse(ArticleCandidateResponse):
-    fragments: list[ArticleCandidateFragmentResponse]
+    pass
 
 
 class StructureProposalResponse(BaseModel):

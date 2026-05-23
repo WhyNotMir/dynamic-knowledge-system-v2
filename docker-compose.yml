@@ -1,4 +1,6 @@
 services:
+
+  # ── Postgres ────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     environment:
@@ -15,6 +17,7 @@ services:
       timeout: 3s
       retries: 10
 
+  # ── Redis ────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     ports:
@@ -25,6 +28,7 @@ services:
       timeout: 3s
       retries: 10
 
+  # ── FastAPI backend ──────────────────────────────────────────────
   api:
     build:
       context: ./backend
@@ -40,12 +44,15 @@ services:
       DATABASE_URL: postgresql+asyncpg://dks:dks_secret@db:5432/dks_db
       REDIS_URL: redis://redis:6379/0
       UPLOAD_DIR: /app/uploads
+      # Allow both the Next.js dev server and a production origin
+      CORS_ALLOWED_ORIGINS: '["http://localhost:3000", "http://127.0.0.1:3000"]'
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
 
+  # ── arq background worker ────────────────────────────────────────
   worker:
     build:
       context: ./backend
@@ -65,6 +72,35 @@ services:
       redis:
         condition: service_healthy
 
+  # ── Next.js frontend (Atlas) ─────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend   # Next.js app lives in frontend/
+      target: dev           # hot-reload dev image; use "prod" for production
+    volumes:
+      - ./frontend:/app     # bind-mount frontend source for hot-reload
+      - frontend_nm:/app/node_modules   # preserve installed modules
+      - frontend_next:/app/.next        # preserve Next.js cache across restarts
+    ports:
+      - "3000:3000"
+    environment:
+      # Exposed to the browser — points at the host-mapped API port.
+      # Next.js server components can use the internal name via API_INTERNAL_URL.
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+
+      # Internal URL used by Next.js server-side fetches (SSR / RSC).
+      # This resolves inside the Docker network without going through the host.
+      API_INTERNAL_URL: http://api:8000
+
+      CHOKIDAR_USEPOLLING: "true"   # needed on macOS / WSL bind-mounts
+      WATCHPACK_POLLING: "true"     # Next.js webpack watcher fallback
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      api:
+        condition: service_started
+
 volumes:
   pgdata:
   uploads:
+  frontend_nm:      # node_modules for the Next.js container
+  frontend_next:    # .next cache for the Next.js container

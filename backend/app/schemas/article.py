@@ -15,6 +15,8 @@ class ArticleBlockResponse(BaseModel):
     id: uuid.UUID
     article_id: uuid.UUID
     fragment_id: uuid.UUID
+    source_title: str | None
+    source_filename: str
     content: str
     element_type: ElementType
     position_index: int

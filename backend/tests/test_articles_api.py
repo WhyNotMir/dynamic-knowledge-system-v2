@@ -97,6 +97,8 @@ async def test_article_blocks_keep_source_fragment_reference(client, db):
     first_block = detail_response.json()["blocks"][0]
     first_fragment = context["fragments"][0]
     assert first_block["fragment_id"] == str(first_fragment.id)
+    assert first_block["source_title"] is None
+    assert first_block["source_filename"] == context["source"].filename
     assert first_block["content"] == first_fragment.content
     assert first_block["element_type"] == first_fragment.element_type.value
     assert first_block["page_number"] == first_fragment.page_number
@@ -290,4 +292,5 @@ async def _create_article_build_context(
         "proposal": proposal,
         "candidates": created_candidates,
         "fragments": fragments,
+        "source": source,
     }

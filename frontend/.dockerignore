@@ -1,0 +1,28 @@
+# ── build artefacts ───────────────────────────────────────────────
+.next
+out
+dist
+
+# ── deps (installed inside the image) ────────────────────────────
+node_modules
+
+# ── env files (injected by compose / CI) ─────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── editor / OS ──────────────────────────────────────────────────
+.DS_Store
+*.swp
+.idea
+.vscode
+
+# ── test / docs ───────────────────────────────────────────────────
+*.test.ts
+*.spec.ts
+SETUP.md
+README.md
+
+# ── git ───────────────────────────────────────────────────────────
+.git
+.gitignore
