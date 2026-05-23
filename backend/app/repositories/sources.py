@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.domain.source import SourceStatus
 from app.models.source import Source
@@ -45,6 +46,7 @@ class SourceRepository:
                 Source.id == source_id,
                 Source.project_id == project_id,
             )
+            .options(selectinload(Source.fragments))
         )
         return result.scalar_one_or_none()
 
@@ -52,6 +54,7 @@ class SourceRepository:
         result = await self.db.execute(
             select(Source)
             .where(Source.project_id == project_id)
+            .options(selectinload(Source.fragments))
             .order_by(Source.created_at.desc())
         )
         return list(result.scalars().all())
@@ -64,6 +67,12 @@ class SourceRepository:
     ) -> Source:
         source.status = status
         source.error_message = error_message
+        await self.db.flush()
+        await self.db.refresh(source)
+        return source
+
+    async def update_title(self, source: Source, title: str | None) -> Source:
+        source.title = title
         await self.db.flush()
         await self.db.refresh(source)
         return source

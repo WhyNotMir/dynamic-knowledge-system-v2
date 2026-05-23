@@ -59,6 +59,7 @@ async def test_ingest_source_creates_fragments(db, tmp_path, monkeypatch):
     assert result is not None
     assert result.status == SourceStatus.DONE
     assert result.error_message is None
+    assert result.title == "Introduction"
 
     fragments_result = await db.execute(
         select(SourceFragment)

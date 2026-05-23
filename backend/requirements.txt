@@ -18,6 +18,7 @@ docling==2.93.0
 # Background jobs
 arq==0.26.1
 redis==5.0.4
+langgraph==0.2.45
 
 # HTTP / files
 httpx==0.28.1
@@ -26,6 +27,6 @@ aiofiles==23.2.1
 # Observability
 loguru==0.7.2
 
-# Testingыуду
+# Testing
 pytest==8.2.0
 pytest-asyncio==0.24.0

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,14 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
+from app.domain.ingestion.document_markers import REFERENCE_HEADINGS
 from app.domain.ingestion.types import ElementType, ExtractedElement
+
+
+CAPTION_RE = re.compile(
+    r"^(?i:(?:figure|fig\.?|table))\s+"
+    r"(?:\d+(?:\.\d+)*|[IVXLC]+|[A-Z])[.:)\-–]?\s+",
+)
 
 
 def extract_pdf(file_path: str | Path) -> list[ExtractedElement]:
@@ -58,7 +66,7 @@ def _normalise_docling_document(document: Any) -> list[ExtractedElement]:
             meta_json = {"source_label": label}
 
             if element_type == ElementType.HEADING:
-                if text.strip().lower() in {"references", "bibliography", "works cited"}:
+                if text.strip().lower() in REFERENCE_HEADINGS:
                     in_references = True
 
                 level = heading_level or 1
@@ -95,7 +103,7 @@ def _classify_text(
 ) -> tuple[ElementType, int | None]:
     normalized = text.strip().lower()
 
-    if normalized in {"references", "bibliography", "works cited"}:
+    if normalized in REFERENCE_HEADINGS:
         return ElementType.HEADING, 1
 
     if in_references:
@@ -158,5 +166,4 @@ def _section_path(heading_stack: list[tuple[int, str]]) -> str | None:
 
 
 def _looks_like_caption(text: str) -> bool:
-    lowered = text.strip().lower()
-    return lowered.startswith(("figure ", "fig. ", "table "))
+    return bool(CAPTION_RE.match(text.strip()))
