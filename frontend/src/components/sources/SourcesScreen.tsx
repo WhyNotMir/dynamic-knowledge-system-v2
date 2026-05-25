@@ -12,6 +12,7 @@ import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SOURCE_COLORS } from '@/lib/ui/constants'
+import { userFacingSourceError } from '@/lib/utils'
 import type { Source, SourceStatus } from '@/lib/types'
 
 type FilterStatus = 'all' | SourceStatus
@@ -41,6 +42,7 @@ export function SourcesScreen({ projectId }: SourcesScreenProps) {
     mutationFn: (file: File) => uploadSource(projectId, file),
     onSuccess: (s) => {
       qc.invalidateQueries({ queryKey: ['sources', projectId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
       toast.success(`"${s.title}" queued for processing`)
     },
     onError: (e: Error) => toast.error(e.message),
@@ -48,8 +50,15 @@ export function SourcesScreen({ projectId }: SourcesScreenProps) {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteSource(projectId, id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sources', projectId] })
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['sources', projectId] }),
+        qc.invalidateQueries({ queryKey: ['inbox', projectId] }),
+        qc.invalidateQueries({ queryKey: ['inbox-items', projectId] }),
+        qc.invalidateQueries({ queryKey: ['articles', projectId] }),
+        qc.invalidateQueries({ queryKey: ['projects'] }),
+      ])
+      router.refresh()
       toast.success('Source deleted')
     },
   })
@@ -207,7 +216,7 @@ function SourceRow({ source, projectId, onDelete }: { source: Source; projectId:
             )}
             {source.status === 'failed' && source.error && (
               <div style={{ fontSize: '10.5px', color: 'oklch(0.45 0.12 32)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                ⚠ {source.error.slice(0, 60)}…
+                ⚠ {userFacingSourceError(source.error).slice(0, 60)}…
               </div>
             )}
           </div>

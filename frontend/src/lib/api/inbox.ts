@@ -1,7 +1,9 @@
 // ── Inbox API ─────────────────────────────────────────────────────
 
 import type { ArticleCandidate, UpdateCandidateRequest } from '@/lib/types'
+import type { ArticleSummary } from '@/lib/types'
 import { apiFetch } from './client'
+import { type ArticleResponse, toArticleSummary } from './articles'
 
 interface CandidateFragmentResponse {
   fragment_id: string
@@ -30,6 +32,13 @@ interface StructureProposalResponse {
   candidates: ArticleCandidateResponse[]
 }
 
+interface InboxItemResponse {
+  id: string
+  target_id: string
+  type: string
+  status: string
+}
+
 interface ConfirmAllResponse {
   updated_count: number
 }
@@ -49,7 +58,13 @@ function toCandidate(projectId: string, candidate: ArticleCandidateResponse): Ar
 }
 
 export async function listInboxItems(projectId: string): Promise<ArticleCandidate[]> {
-  const proposals = await apiFetch<StructureProposalResponse[]>(`/projects/${projectId}/structure/proposals`)
+  const items = await apiFetch<InboxItemResponse[]>(`/projects/${projectId}/inbox`)
+  const proposalIds = items
+    .filter(item => item.type === 'structure_proposal')
+    .map(item => item.target_id)
+  const proposals = await Promise.all(
+    proposalIds.map(proposalId => getStructureProposal(projectId, proposalId)),
+  )
   return proposals.flatMap(proposal =>
     proposal.candidates.map(candidate => toCandidate(projectId, candidate)),
   )
@@ -95,9 +110,10 @@ export async function confirmAllCandidates(
 export async function buildArticles(
   projectId: string,
   proposalId: string,
-): Promise<unknown> {
-  return apiFetch(
+): Promise<ArticleSummary[]> {
+  const articles = await apiFetch<ArticleResponse[]>(
     `/projects/${projectId}/articles/build`,
     { method: 'POST', body: JSON.stringify({ proposal_id: proposalId }) },
   )
+  return articles.map(article => toArticleSummary(article))
 }

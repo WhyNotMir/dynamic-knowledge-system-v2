@@ -1,10 +1,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.sources.service import (
+    delete_project_source,
     ProjectNotFoundError,
+    prepare_source_retry,
     SourceNotFoundError,
     UnsupportedSourceTypeError,
     create_uploaded_source,
@@ -89,6 +92,50 @@ async def get_source_fragments(
         return await list_source_fragments(project_id, source_id, db)
     except (ProjectNotFoundError, SourceNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/{source_id}", status_code=204)
+async def delete_source(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    try:
+        await delete_project_source(project_id, source_id, db)
+        await db.commit()
+    except (ProjectNotFoundError, SourceNotFoundError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return Response(status_code=204)
+
+
+@router.post("/{source_id}/retry", response_model=SourceResponse, status_code=202)
+async def retry_source(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> SourceResponse:
+    try:
+        source = await prepare_source_retry(project_id, source_id, db)
+        await db.commit()
+        await request.app.state.arq_pool.enqueue_job(
+            "ingest_source_job",
+            str(source.id),
+        )
+    except (ProjectNotFoundError, SourceNotFoundError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        await mark_source_failed(source_id, "Failed to enqueue source ingestion", db)
+        await db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to enqueue source ingestion",
+        ) from exc
+
+    return _source_response(source)
 
 
 def _source_response(source: Source) -> SourceResponse:

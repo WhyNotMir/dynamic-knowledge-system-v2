@@ -1,6 +1,7 @@
 import pytest
 
 from types import SimpleNamespace
+from PIL import Image
 
 from app.domain.ingestion.extractor import extract_pdf, _normalise_docling_document
 from app.domain.ingestion.types import ElementType
@@ -77,6 +78,44 @@ def test_normalise_docling_document_classifies_captions_conservatively():
     assert elements[2].element_type == ElementType.PARAGRAPH
 
 
+def test_normalise_docling_document_preserves_table_rows_and_caption_group():
+    document = FakeDocument(
+        [
+            table_item([["Metric", "Value"], ["BLEU", "27.5"]], page_no=4),
+            item("text", "Table 1: Translation quality.", page_no=4),
+        ]
+    )
+
+    elements = _normalise_docling_document(document)
+
+    assert elements[0].element_type == ElementType.TABLE
+    assert elements[0].content == "Metric | Value\nBLEU | 27.5"
+    assert elements[0].meta_json["table"]["rows"] == [["Metric", "Value"], ["BLEU", "27.5"]]
+    assert elements[0].meta_json["caption_group_id"] == elements[1].meta_json["caption_group_id"]
+    assert elements[0].meta_json["caption"]["text"] == "Table 1: Translation quality."
+
+
+def test_normalise_docling_document_preserves_picture_payload():
+    document = FakeDocument(
+        [
+            picture_item(
+                image=Image.new("RGB", (8, 6), color="white"),
+                caption_text="Figure 1: Model architecture.",
+                page_no=3,
+            ),
+        ]
+    )
+
+    elements = _normalise_docling_document(document)
+
+    assert elements[0].element_type == ElementType.IMAGE
+    assert elements[0].content == "Figure 1: Model architecture."
+    assert elements[0].meta_json["image"]["has_payload"] is True
+    assert elements[0].meta_json["image_base64"]
+    assert elements[0].meta_json["image_width"] == 8
+    assert elements[0].meta_json["image_height"] == 6
+
+
 class FakeDocument:
     def __init__(self, entries):
         self.entries = entries
@@ -93,4 +132,36 @@ def item(label: str, text: str, *, level: int | None = None, page_no: int | None
             prov=[SimpleNamespace(page_no=page_no)] if page_no is not None else [],
         ),
         level,
+    )
+
+
+def table_item(rows: list[list[str]], *, page_no: int | None = None):
+    class FakeTable:
+        label = SimpleNamespace(value="table")
+        text = ""
+        prov = [SimpleNamespace(page_no=page_no)] if page_no is not None else []
+
+        def export_to_dataframe(self, doc):
+            import pandas as pd
+
+            return pd.DataFrame(rows)
+
+    return FakeTable(), None
+
+
+def picture_item(
+    *,
+    image,
+    caption_text: str | None = None,
+    page_no: int | None = None,
+):
+    return (
+        SimpleNamespace(
+            label=SimpleNamespace(value="picture"),
+            text="",
+            image=SimpleNamespace(pil_image=image),
+            caption_text=caption_text,
+            prov=[SimpleNamespace(page_no=page_no)] if page_no is not None else [],
+        ),
+        None,
     )

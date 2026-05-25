@@ -27,3 +27,23 @@ export function formatDateTime(value: string | null | undefined): string {
     timeZone: 'Europe/Vienna',
   }).format(date)
 }
+
+export function userFacingSourceError(value: string | null | undefined): string {
+  if (!value) return 'The source could not be processed. Check the file and try again.'
+
+  const internalPatterns = [
+    'Expected node',
+    'Traceback',
+    'KeyError',
+    'ValueError',
+    'RuntimeError',
+    'Exception',
+    'langgraph',
+  ]
+
+  if (internalPatterns.some(pattern => value.toLowerCase().includes(pattern.toLowerCase()))) {
+    return 'The source could not be processed. Check the file and try again.'
+  }
+
+  return value
+}

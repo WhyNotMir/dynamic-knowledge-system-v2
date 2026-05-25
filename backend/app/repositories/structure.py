@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -176,3 +176,43 @@ class StructureRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def delete_candidates_for_source(
+        self,
+        *,
+        project_id: uuid.UUID,
+        source_id: uuid.UUID,
+    ) -> int:
+        candidate_ids = (
+            select(ArticleCandidate.id)
+            .join(StructureProposal)
+            .join(ArticleCandidateFragment)
+            .join(SourceFragment, SourceFragment.id == ArticleCandidateFragment.fragment_id)
+            .where(
+                StructureProposal.project_id == project_id,
+                SourceFragment.source_id == source_id,
+            )
+            .distinct()
+        )
+        result = await self.db.execute(
+            delete(ArticleCandidate).where(ArticleCandidate.id.in_(candidate_ids))
+        )
+        await self.db.flush()
+        await self._refresh_project_proposal_counts(project_id)
+        return result.rowcount or 0
+
+    async def _refresh_project_proposal_counts(self, project_id: uuid.UUID) -> None:
+        result = await self.db.execute(
+            select(StructureProposal)
+            .where(StructureProposal.project_id == project_id)
+            .options(selectinload(StructureProposal.candidates))
+        )
+
+        for proposal in result.scalars().all():
+            candidate_count = len(proposal.candidates)
+            if candidate_count == 0:
+                await self.db.delete(proposal)
+            else:
+                proposal.candidate_count = candidate_count
+
+        await self.db.flush()

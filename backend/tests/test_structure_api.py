@@ -171,6 +171,47 @@ async def test_blank_fragments_give_empty_proposal(client, db):
     assert proposal["candidates"] == []
 
 
+async def test_propose_ignores_leading_unsectioned_front_matter(client, db):
+    project, source = await _create_project_with_source(db, name="Front Matter Test")
+    db.add_all(
+        [
+            SourceFragment(
+                source_id=source.id,
+                content="Uploaded under the publisher's standard reproduction terms.",
+                element_type=ElementType.PARAGRAPH,
+                position_index=0,
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="Abstract",
+                element_type=ElementType.HEADING,
+                position_index=1,
+                heading_level=1,
+                section_path="Abstract",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="The paper introduces a compact method.",
+                element_type=ElementType.PARAGRAPH,
+                position_index=2,
+                section_path="Abstract",
+            ),
+        ]
+    )
+    await db.commit()
+
+    response = await client.post(f"/projects/{project.id}/structure/propose")
+
+    assert response.status_code == 201, response.text
+    proposal = response.json()
+    assert proposal["candidate_count"] == 1
+    assert proposal["candidates"][0]["title"] == "Abstract"
+    assert [fragment["content"] for fragment in proposal["candidates"][0]["fragments"]] == [
+        "Abstract",
+        "The paper introduces a compact method.",
+    ]
+
+
 async def test_propose_groups_by_top_level_section_path_without_headings(client, db):
     project, source = await _create_project_with_source(db, name="Section Path Test")
     db.add_all(
@@ -212,6 +253,133 @@ async def test_propose_groups_by_top_level_section_path_without_headings(client,
     assert [fragment["content"] for fragment in proposal["candidates"][0]["fragments"]] == [
         "Alpha paragraph.",
         "Alpha detail.",
+    ]
+
+
+async def test_propose_keeps_numbered_subsections_inside_parent_article(client, db):
+    project, source = await _create_project_with_source(db, name="Numbered Section Test")
+    db.add_all(
+        [
+            SourceFragment(
+                source_id=source.id,
+                content="3 Model Architecture",
+                element_type=ElementType.HEADING,
+                position_index=0,
+                heading_level=1,
+                section_path="3 Model Architecture",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="Architecture paragraph.",
+                element_type=ElementType.PARAGRAPH,
+                position_index=1,
+                section_path="3 Model Architecture",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="3.1 Encoder and Decoder Stacks",
+                element_type=ElementType.HEADING,
+                position_index=2,
+                heading_level=1,
+                section_path="3.1 Encoder and Decoder Stacks",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="Encoder paragraph.",
+                element_type=ElementType.PARAGRAPH,
+                position_index=3,
+                section_path="3.1 Encoder and Decoder Stacks",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="3.2 Attention",
+                element_type=ElementType.HEADING,
+                position_index=4,
+                heading_level=1,
+                section_path="3.2 Attention",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="Attention paragraph.",
+                element_type=ElementType.PARAGRAPH,
+                position_index=5,
+                section_path="3.2 Attention",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="Scaled Dot-Product Attention",
+                element_type=ElementType.HEADING,
+                position_index=6,
+                heading_level=1,
+                section_path="Scaled Dot-Product Attention",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="Figure 2.",
+                element_type=ElementType.IMAGE,
+                position_index=7,
+                section_path="Scaled Dot-Product Attention",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="3.2.1 Scaled Dot-Product Attention",
+                element_type=ElementType.HEADING,
+                position_index=8,
+                heading_level=1,
+                section_path="3.2.1 Scaled Dot-Product Attention",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="Scaled dot-product paragraph.",
+                element_type=ElementType.PARAGRAPH,
+                position_index=9,
+                section_path="Scaled Dot-Product Attention",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="4 Training",
+                element_type=ElementType.HEADING,
+                position_index=10,
+                heading_level=1,
+                section_path="4 Training",
+            ),
+            SourceFragment(
+                source_id=source.id,
+                content="Training paragraph.",
+                element_type=ElementType.PARAGRAPH,
+                position_index=11,
+                section_path="4 Training",
+            ),
+        ]
+    )
+    await db.commit()
+
+    response = await client.post(f"/projects/{project.id}/structure/propose")
+
+    assert response.status_code == 201, response.text
+    proposal = response.json()
+    assert proposal["candidate_count"] == 2
+    assert [candidate["title"] for candidate in proposal["candidates"]] == [
+        "3 Model Architecture",
+        "4 Training",
+    ]
+    assert [fragment["content"] for fragment in proposal["candidates"][0]["fragments"]] == [
+        "3 Model Architecture",
+        "Architecture paragraph.",
+        "3.1 Encoder and Decoder Stacks",
+        "Encoder paragraph.",
+        "3.2 Attention",
+        "Attention paragraph.",
+        "Scaled Dot-Product Attention",
+        "Figure 2.",
+        "3.2.1 Scaled Dot-Product Attention",
+        "Scaled dot-product paragraph.",
+    ]
+    assert proposal["candidates"][0]["internal_headings"] == [
+        "3.1 Encoder and Decoder Stacks",
+        "3.2 Attention",
+        "Scaled Dot-Product Attention",
+        "3.2.1 Scaled Dot-Product Attention",
     ]
 
 

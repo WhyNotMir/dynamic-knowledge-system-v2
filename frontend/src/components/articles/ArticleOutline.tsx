@@ -31,6 +31,7 @@ export function ArticleOutline({ outline, activeId, onSelect, sourceRefs, relate
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
         {outline.map(item => {
           const isActive = item.id === activeId
+          const depth = Math.max(0, Math.min(item.level - 1, 4))
           return (
             <li
               key={item.id}
@@ -39,12 +40,11 @@ export function ArticleOutline({ outline, activeId, onSelect, sourceRefs, relate
                 gridTemplateColumns: '12px 1fr',
                 gap: '8px',
                 alignItems: 'center',
-                fontSize: item.level === 1 ? '12px' : '11.5px',
+                fontSize: item.level === 1 ? '12px' : item.level === 2 ? '11.5px' : '11px',
                 color: isActive ? 'var(--ink)' : 'var(--ink-2)',
                 fontWeight: isActive ? 500 : 400,
-                paddingLeft: item.level === 2 ? '14px' : 0,
                 cursor: 'pointer',
-                padding: `4px ${item.level === 2 ? '0 4px 14px' : '0 4px 4px'} 4px`,
+                padding: `4px 4px 4px ${depth * 14}px`,
               }}
               onClick={() => onSelect(item.id)}
             >

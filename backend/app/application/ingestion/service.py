@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.ingestion.extractor import extract_pdf
@@ -17,6 +18,9 @@ from app.domain.source import SourceStatus
 from app.models.source import Source
 from app.models.source_fragment import SourceFragment
 from app.repositories.sources import SourceRepository
+
+
+SAFE_INGESTION_ERROR = "Source processing failed. Check server logs for details."
 
 
 def content_hash(content: str) -> str:
@@ -43,7 +47,8 @@ async def ingest_source(source_id: uuid.UUID, db: AsyncSession) -> Source | None
         source = await sources.get(source_id)
         if source is None:
             raise
-        return await sources.update_status(source, SourceStatus.FAILED, str(exc))
+        logger.exception(f"Source {source_id} ingestion failed: {exc}")
+        return await sources.update_status(source, SourceStatus.FAILED, SAFE_INGESTION_ERROR)
 
 
 async def _load_source(state: IngestionState) -> IngestionState:
@@ -71,14 +76,14 @@ async def _mark_processing(state: IngestionState) -> IngestionState:
 async def _extract_elements(state: IngestionState) -> IngestionState:
     source = state["source"]
     if source is None:
-        return {}
+        return {"not_found": True}
     return {"elements": extract_pdf(source.storage_path)}
 
 
 async def _update_source_title(state: IngestionState) -> IngestionState:
     source = state["source"]
     if source is None:
-        return {}
+        return {"not_found": True}
     sources = SourceRepository(state["db"])
     updated = await sources.update_title(source, source_title_from_elements(state["elements"]))
     return {"source": updated}
@@ -91,7 +96,7 @@ async def _segment_elements(state: IngestionState) -> IngestionState:
 async def _save_fragments(state: IngestionState) -> IngestionState:
     source = state["source"]
     if source is None:
-        return {}
+        return {"not_found": True}
     sources = SourceRepository(state["db"])
     fragments = [
         SourceFragment(
@@ -114,7 +119,7 @@ async def _save_fragments(state: IngestionState) -> IngestionState:
 async def _mark_done(state: IngestionState) -> IngestionState:
     source = state["source"]
     if source is None:
-        return {}
+        return {"not_found": True}
     sources = SourceRepository(state["db"])
     updated = await sources.update_status(source, SourceStatus.DONE, None)
     return {"source": updated}

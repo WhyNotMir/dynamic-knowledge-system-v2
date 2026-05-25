@@ -24,6 +24,8 @@ class ArticleBlockResponse(BaseModel):
     heading_level: int | None
     section_path: str | None
     meta_json: dict | None
+    include_in_article: bool = True
+    include_in_outline: bool = True
     created_at: datetime
 
 
@@ -32,6 +34,9 @@ class ArticleResponse(BaseModel):
     project_id: uuid.UUID
     candidate_id: uuid.UUID
     title: str
+    topic_path: list[str]
+    block_count: int
+    source_count: int
     status: ArticleStatus
     created_at: datetime
     updated_at: datetime

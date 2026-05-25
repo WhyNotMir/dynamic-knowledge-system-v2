@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getArticle } from '@/lib/api/articles'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
-import { TopicTreePanel } from './TopicTreePanel'
+import { ArticleContextPanel } from './ArticleContextPanel'
 import { ArticleOutline } from './ArticleOutline'
 import { ArticleBody } from './ArticleBody'
 
@@ -13,11 +13,16 @@ interface Props { projectId: string; articleId: string }
 
 export function ArticleDetailScreen({ projectId, articleId }: Props) {
   const [activeOutline, setActiveOutline] = useState<string>('ov')
+  const [contextOpen, setContextOpen] = useState(true)
 
   const { data: article, isLoading, error, refetch } = useQuery({
     queryKey: ['article', projectId, articleId],
     queryFn: () => getArticle(projectId, articleId),
   })
+
+  useEffect(() => {
+    if (article?.outline[0]) setActiveOutline(article.outline[0].id)
+  }, [article?.id, article?.outline])
 
   if (isLoading) return (
     <div style={{ display: 'grid', gridTemplateColumns: '256px 1fr 244px', height: '100%' }}>
@@ -34,13 +39,41 @@ export function ArticleDetailScreen({ projectId, articleId }: Props) {
   )
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '256px minmax(0, 1fr) 244px', height: '100%', minHeight: 0 }}>
-      {/* Left: topic tree */}
-      <TopicTreePanel
-        projectId={projectId}
-        articleId={articleId}
-        nodes={[]}
-      />
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `${contextOpen ? '286px' : '32px'} minmax(0, 1fr) 244px`,
+        height: '100%',
+        minHeight: 0,
+        transition: 'grid-template-columns 0.18s ease',
+      }}
+    >
+      {/* Left: article context. The global topic tree lives in the app sidebar. */}
+      {contextOpen ? (
+        <ArticleContextPanel article={article} onCollapse={() => setContextOpen(false)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setContextOpen(true)}
+          title="Show article context"
+          style={{
+            height: '100%',
+            border: 0,
+            borderRight: '1px solid var(--rule)',
+            background: 'var(--paper-2)',
+            color: 'var(--slate)',
+            cursor: 'pointer',
+            writingMode: 'vertical-rl',
+            textOrientation: 'mixed',
+            fontSize: '10.5px',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            fontFamily: 'var(--f-mono)',
+          }}
+        >
+          Context
+        </button>
+      )}
 
       {/* Center: article body */}
       <ArticleBody

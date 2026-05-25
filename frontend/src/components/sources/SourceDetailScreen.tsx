@@ -10,6 +10,7 @@ import { StatusPill } from '@/components/ui/StatusPill'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { SOURCE_COLORS } from '@/lib/ui/constants'
+import { userFacingSourceError } from '@/lib/utils'
 import type { Source, SourceFragment } from '@/lib/types'
 
 interface Props { projectId: string; sourceId: string }
@@ -49,6 +50,7 @@ export function SourceDetailScreen({ projectId, sourceId }: Props) {
 
   const fragmentCount = fragments?.length ?? source.fragments
   const pageCount = source.pages ?? new Set((fragments ?? []).map(fragment => fragment.page).filter(Boolean)).size
+  const sourceError = userFacingSourceError(source.error)
 
   return (
     <div style={{ padding: '24px 32px 80px' }}>
@@ -89,7 +91,7 @@ export function SourceDetailScreen({ projectId, sourceId }: Props) {
       </div>
 
       {/* Failed error card */}
-      {source.status === 'failed' && source.error && (
+      {source.status === 'failed' && (
         <div style={{ border: '1px solid oklch(0.80 0.07 32)', background: 'var(--rust-tint)', borderRadius: '3px', padding: '18px 20px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <div style={{ width: 26, height: 26, border: '1px solid oklch(0.75 0.10 32)', background: 'var(--surface)', color: 'oklch(0.45 0.12 32)', borderRadius: '50%', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -98,7 +100,7 @@ export function SourceDetailScreen({ projectId, sourceId }: Props) {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '14px', color: 'oklch(0.38 0.12 32)', fontWeight: 500 }}>Processing failed</div>
               <div style={{ fontSize: '10.5px', color: 'var(--slate)', marginTop: '2px' }}>Uploaded {source.uploaded} · {source.filename}</div>
-              <p style={{ fontSize: '13px', color: 'var(--ink-2)', margin: '14px 0 10px', maxWidth: '70ch' }}>{source.error}</p>
+              <p style={{ fontSize: '13px', color: 'var(--ink-2)', margin: '14px 0 10px', maxWidth: '70ch' }}>{sourceError}</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 24px', padding: '10px 0 0', borderTop: '1px dashed oklch(0.80 0.05 32)', fontSize: '11.5px', color: 'var(--ink-2)' }}>
                 <span><span style={{ color: 'oklch(0.5 0.1 32)', marginRight: '6px' }}>File</span>{source.filename}</span>
                 <span><span style={{ color: 'oklch(0.5 0.1 32)', marginRight: '6px' }}>Size</span>{source.size}</span>

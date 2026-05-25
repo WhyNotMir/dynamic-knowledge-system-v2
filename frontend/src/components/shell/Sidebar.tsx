@@ -5,10 +5,12 @@ import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Upload, Inbox, BookOpen, MessageSquare,
-  ChevronDown, Plus, Check,
+  ChevronDown, ChevronLeft, Check,
 } from 'lucide-react'
 import type { Project, TopicNode } from '@/lib/types'
+import { listArticles } from '@/lib/api/articles'
 import { listProjects } from '@/lib/api/projects'
+import { buildTopicTree } from '@/lib/topic-tree'
 
 interface SidebarProps {
   project: Project
@@ -30,6 +32,11 @@ export function Sidebar({ project, activeSection }: SidebarProps) {
     queryKey: ['projects'],
     queryFn: listProjects,
   })
+  const { data: articles } = useQuery({
+    queryKey: ['articles', project.id],
+    queryFn: () => listArticles(project.id),
+  })
+  const topicTree = buildTopicTree(articles ?? [])
 
   return (
     <aside
@@ -134,10 +141,12 @@ export function Sidebar({ project, activeSection }: SidebarProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
           <span className="eyebrow">Atlas index</span>
           <Link href={`/${project.id}/articles`}>
-            <span className="btn btn--ghost btn--xs" style={{ fontSize: '10.5px', color: 'var(--graphite)' }}>all</span>
+            <span className="btn btn--ghost btn--xs" style={{ fontSize: '10.5px', color: 'var(--graphite)' }}>
+              {topicTree.length > 0 ? 'View tree' : 'all'}
+            </span>
           </Link>
         </div>
-        <MiniTopicTree nodes={[]} projectId={project.id} depth={0} />
+        <MiniTopicTree nodes={topicTree} projectId={project.id} depth={0} />
       </div>
 
       {/* ── Rail foot ── */}
@@ -151,7 +160,9 @@ export function Sidebar({ project, activeSection }: SidebarProps) {
           <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'oklch(0.55 0.06 145)', color: 'var(--paper)', display: 'grid', placeItems: 'center', fontSize: '10.5px', fontWeight: 500 }}>
             M
           </div>
-          <span style={{ fontSize: '11.5px', color: 'var(--ink-2)' }}>Atlas workspace</span>
+          <span style={{ fontSize: '11.5px', color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {project.name} workspace
+          </span>
         </div>
       </div>
     </aside>
@@ -230,9 +241,9 @@ function ProjectPopover({ projects, currentId, onClose }: {
         </Link>
       ))}
       <div style={{ borderTop: '1px solid var(--rule)', padding: '6px 8px 2px', marginTop: '4px' }}>
-        <Link href="/projects?new=1" onClick={onClose}>
+        <Link href="/projects" onClick={onClose}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10.5px', color: 'var(--slate)', cursor: 'pointer', padding: '2px 0' }}>
-            <Plus size={11} /> New project
+            <ChevronLeft size={11} /> Back to projects
           </div>
         </Link>
       </div>

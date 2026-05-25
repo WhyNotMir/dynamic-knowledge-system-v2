@@ -39,6 +39,7 @@ class ArticleCandidateResponse(BaseModel):
     status: CandidateStatus
     suggested_order: int
     created_at: datetime
+    internal_headings: list[str] = []
     fragments: list[ArticleCandidateFragmentResponse] = []
 
     model_config = {"from_attributes": True}

@@ -53,7 +53,7 @@ src/
 │   ├── sources/                 SourcesScreen, SourceDetailScreen
 │   ├── inbox/                   InboxScreen
 │   ├── articles/                ArticlesListScreen, ArticleDetailScreen,
-│   │                            ArticleBody, TopicTreePanel, ArticleOutline
+│   │                            ArticleBody, ArticleContextPanel, ArticleOutline
 │   └── qa/                      QAScreen
 │
 ├── lib/

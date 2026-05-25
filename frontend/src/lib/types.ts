@@ -98,6 +98,7 @@ export interface ArticleSummary {
   id: string
   title: string
   topic: string
+  topicPath: string[]
   blocks: number
   sources: number
   status: ArticleStatus
@@ -106,7 +107,7 @@ export interface ArticleSummary {
   excerpt: string
 }
 
-export type ArticleBlockType = 'h1' | 'h2' | 'p' | 'eq'
+export type ArticleBlockType = 'h1' | 'h2' | 'h3' | 'p' | 'eq' | 'table' | 'image' | 'caption'
 
 export interface BlockProvenance {
   source: string
@@ -119,15 +120,20 @@ export interface ArticleBlock {
   id: string
   type: ArticleBlockType
   text: string
+  elementType?: string
+  headingLevel?: number | null
+  meta?: Record<string, unknown> | null
   anchor?: string
   caption?: string
+  includeInArticle?: boolean
+  includeInOutline?: boolean
   provenance?: BlockProvenance | BlockProvenance[]
 }
 
 export interface OutlineItem {
   id: string
   label: string
-  level: 1 | 2
+  level: number
 }
 
 export interface ArticleDetail {

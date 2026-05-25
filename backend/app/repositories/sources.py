@@ -77,6 +77,10 @@ class SourceRepository:
         await self.db.refresh(source)
         return source
 
+    async def delete(self, source: Source) -> None:
+        await self.db.delete(source)
+        await self.db.flush()
+
     async def replace_fragments(
         self,
         source_id: uuid.UUID,

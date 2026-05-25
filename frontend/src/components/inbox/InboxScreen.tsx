@@ -59,9 +59,17 @@ export function InboxScreen({ projectId }: InboxScreenProps) {
 
   const buildMut = useMutation({
     mutationFn: (proposalId: string) => buildArticles(projectId, proposalId),
-    onSuccess: () => {
+    onSuccess: async (articles) => {
+      qc.setQueryData(['articles', projectId], articles)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['articles', projectId] }),
+        qc.invalidateQueries({ queryKey: ['inbox', projectId] }),
+        qc.invalidateQueries({ queryKey: ['inbox-items', projectId] }),
+        qc.invalidateQueries({ queryKey: ['projects'] }),
+      ])
       toast.success('Articles built')
       router.push(`/${projectId}/articles`)
+      router.refresh()
     },
   })
 

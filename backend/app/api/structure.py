@@ -16,6 +16,7 @@ from app.application.structure.service import (
 from app.database import get_db
 from app.models.article_candidate import ArticleCandidate
 from app.models.structure_proposal import StructureProposal
+from app.domain.ingestion.types import ElementType
 from app.schemas.structure import (
     ArticleCandidateDetailResponse,
     ArticleCandidateFragmentResponse,
@@ -167,6 +168,7 @@ def _candidate_response(candidate: ArticleCandidate) -> ArticleCandidateResponse
         status=candidate.status,
         suggested_order=candidate.suggested_order,
         created_at=candidate.created_at,
+        internal_headings=_internal_headings(candidate),
         fragments=_candidate_fragments(candidate),
     )
 
@@ -193,3 +195,31 @@ def _candidate_fragments(
             key=lambda link: link.position_index,
         )
     ]
+
+
+def _internal_headings(candidate: ArticleCandidate) -> list[str]:
+    headings: list[str] = []
+    seen: set[str] = set()
+    for link in sorted(candidate.fragment_links, key=lambda link: link.position_index):
+        fragment = link.fragment
+        if fragment is None or fragment.element_type != ElementType.HEADING:
+            continue
+        if link.position_index == 0 and _same_heading(fragment.content, candidate.title):
+            continue
+        text = " ".join(fragment.content.split()).strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        headings.append(text)
+    return headings
+
+
+def _same_heading(left: str, right: str) -> bool:
+    return _heading_key(left) == _heading_key(right)
+
+
+def _heading_key(value: str) -> str:
+    return " ".join(value.split()).casefold()

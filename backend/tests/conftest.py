@@ -8,16 +8,24 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-os.environ.setdefault(
-    "DATABASE_URL",
-    os.environ.get(
-        "TEST_DATABASE_URL",
-        "postgresql+asyncpg://dks:dks_secret@localhost:5432/dks_test",
-    ),
-)
+
+def _test_database_url() -> str:
+    explicit = os.environ.get("TEST_DATABASE_URL")
+    if explicit:
+        return explicit
+
+    current = os.environ.get(
+        "DATABASE_URL",
+        "postgresql+asyncpg://dks:dks_secret@localhost:5432/dks_db",
+    )
+    return make_url(current).set(database="dks_test").render_as_string(hide_password=False)
+
+
+os.environ["DATABASE_URL"] = _test_database_url()
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("UPLOAD_DIR", "/tmp/dks-rebuild-test-uploads")
 os.environ.setdefault("CORS_ALLOWED_ORIGINS", '["http://localhost:3000"]')
@@ -31,6 +39,8 @@ from app.main import app  # noqa: E402
 
 @pytest_asyncio.fixture
 async def test_engine():
+    await _ensure_test_database_exists(os.environ["DATABASE_URL"])
+
     engine = create_async_engine(
         os.environ["DATABASE_URL"],
         echo=False,
@@ -48,6 +58,32 @@ async def test_engine():
     yield engine
 
     await engine.dispose()
+
+
+async def _ensure_test_database_exists(database_url: str) -> None:
+    url = make_url(database_url)
+    database_name = url.database
+    if not database_name or not database_name.endswith("_test"):
+        raise RuntimeError(f"Refusing to run tests against non-test database: {database_name}")
+
+    admin_url = url.set(database="postgres")
+    admin_engine = create_async_engine(
+        admin_url,
+        isolation_level="AUTOCOMMIT",
+        poolclass=NullPool,
+    )
+    quoted_database_name = database_name.replace('"', '""')
+
+    try:
+        async with admin_engine.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :database_name"),
+                {"database_name": database_name},
+            )
+            if exists is None:
+                await conn.execute(text(f'CREATE DATABASE "{quoted_database_name}"'))
+    finally:
+        await admin_engine.dispose()
 
 
 @pytest_asyncio.fixture

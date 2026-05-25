@@ -9,8 +9,10 @@ from app.config import settings
 from app.domain.source import SourceStatus
 from app.models.source import Source
 from app.models.source_fragment import SourceFragment
+from app.repositories.articles import ArticleRepository
 from app.repositories.projects import ProjectRepository
 from app.repositories.sources import SourceRepository
+from app.repositories.structure import StructureRepository
 
 
 class ProjectNotFoundError(RuntimeError):
@@ -94,6 +96,39 @@ async def list_source_fragments(
     await get_project_source(project_id, source_id, db)
 
     return await SourceRepository(db).list_fragments(source_id)
+
+
+async def delete_project_source(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    db: AsyncSession,
+) -> None:
+    source = await get_project_source(project_id, source_id, db)
+    storage_path = Path(source.storage_path)
+    await ArticleRepository(db).delete_for_source(
+        project_id=project_id,
+        source_id=source_id,
+    )
+    await StructureRepository(db).delete_candidates_for_source(
+        project_id=project_id,
+        source_id=source_id,
+    )
+    await SourceRepository(db).delete(source)
+    if storage_path.exists():
+        storage_path.unlink()
+
+
+async def prepare_source_retry(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    db: AsyncSession,
+) -> Source:
+    source = await get_project_source(project_id, source_id, db)
+    return await SourceRepository(db).update_status(
+        source,
+        SourceStatus.PENDING,
+        None,
+    )
 
 
 async def mark_source_failed(

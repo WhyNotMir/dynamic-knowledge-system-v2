@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -60,6 +60,11 @@ class ArticleRepository:
         result = await self.db.execute(
             select(Article)
             .where(Article.project_id == project_id)
+            .options(
+                selectinload(Article.blocks)
+                .selectinload(ArticleBlock.fragment)
+                .selectinload(SourceFragment.source)
+            )
             .order_by(Article.created_at.desc())
         )
         return list(result.scalars().all())
@@ -97,3 +102,25 @@ class ArticleRepository:
             .order_by(ArticleCandidate.suggested_order)
         )
         return list(result.scalars().all())
+
+    async def delete_for_source(
+        self,
+        *,
+        project_id: uuid.UUID,
+        source_id: uuid.UUID,
+    ) -> int:
+        article_ids = (
+            select(Article.id)
+            .join(ArticleBlock)
+            .join(SourceFragment, SourceFragment.id == ArticleBlock.fragment_id)
+            .where(
+                Article.project_id == project_id,
+                SourceFragment.source_id == source_id,
+            )
+            .distinct()
+        )
+        result = await self.db.execute(
+            delete(Article).where(Article.id.in_(article_ids))
+        )
+        await self.db.flush()
+        return result.rowcount or 0

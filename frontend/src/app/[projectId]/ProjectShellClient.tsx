@@ -1,8 +1,12 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { AppShell } from '@/components/shell/AppShell'
 import type { Project } from '@/lib/types'
+import { listArticles } from '@/lib/api/articles'
+import { listInboxItems } from '@/lib/api/inbox'
+import { listSources } from '@/lib/api/sources'
 
 function useActiveSection(projectId: string): string {
   const pathname = usePathname()
@@ -47,8 +51,26 @@ function useBreadcrumbs(projectId: string, project: Project) {
 export function ProjectShellClient({ project, children }: { project: Project; children: React.ReactNode }) {
   const section = useActiveSection(project.id)
   const crumbs  = useBreadcrumbs(project.id, project)
+  const { data: sources } = useQuery({
+    queryKey: ['sources', project.id],
+    queryFn: () => listSources(project.id),
+  })
+  const { data: articles } = useQuery({
+    queryKey: ['articles', project.id],
+    queryFn: () => listArticles(project.id),
+  })
+  const { data: candidates } = useQuery({
+    queryKey: ['inbox-items', project.id],
+    queryFn: () => listInboxItems(project.id),
+  })
+  const hydratedProject: Project = {
+    ...project,
+    sources: sources?.length ?? project.sources,
+    articles: articles?.length ?? project.articles,
+    candidates: candidates?.filter(candidate => candidate.status === 'proposed').length ?? project.candidates,
+  }
   return (
-    <AppShell project={project} activeSection={section} breadcrumbs={crumbs}>
+    <AppShell project={hydratedProject} activeSection={section} breadcrumbs={crumbs}>
       {children}
     </AppShell>
   )

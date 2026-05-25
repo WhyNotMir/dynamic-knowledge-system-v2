@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import select
 
-from app.application.ingestion.service import ingest_source
+from app.application.ingestion.service import SAFE_INGESTION_ERROR, ingest_source
 from app.domain.ingestion.types import ElementType, ExtractedElement
 from app.domain.source import SourceStatus
 from app.models.project import Project
@@ -106,4 +106,4 @@ async def test_ingest_source_marks_failed_when_extractor_fails(db, tmp_path, mon
 
     assert result is not None
     assert result.status == SourceStatus.FAILED
-    assert result.error_message == "extractor failed"
+    assert result.error_message == SAFE_INGESTION_ERROR
