@@ -10,7 +10,10 @@ class ElementType(str, enum.Enum):
     LIST_ITEM = "list_item"
     TABLE = "table"
     CAPTION = "caption"
+    QUOTE = "quote"
+    CODE_BLOCK = "code_block"
     IMAGE = "image"
+    FOOTNOTE = "footnote"
     FORMULA = "formula"
     REFERENCE = "reference"
 

@@ -24,6 +24,18 @@ export function ArticleDetailScreen({ projectId, articleId }: Props) {
     if (article?.outline[0]) setActiveOutline(article.outline[0].id)
   }, [article?.id, article?.outline])
 
+  useEffect(() => {
+    if (!article) return
+
+    const hash = window.location.hash.slice(1)
+    if (!hash) return
+
+    window.requestAnimationFrame(() => {
+      const element = document.getElementById(hash)
+      element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }, [article])
+
   if (isLoading) return (
     <div style={{ display: 'grid', gridTemplateColumns: '256px 1fr 244px', height: '100%' }}>
       <div style={{ borderRight: '1px solid var(--rule)', background: 'var(--paper-2)' }} />

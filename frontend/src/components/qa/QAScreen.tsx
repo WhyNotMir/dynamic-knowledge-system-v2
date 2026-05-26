@@ -1,357 +1,414 @@
 'use client'
 
-import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
-import { Send, AlertTriangle, ExternalLink, Copy } from 'lucide-react'
+import { Copy, ExternalLink, MessageSquare, Plus, Send, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { askQuestion, listSuggestedQuestions } from '@/lib/api/qa'
-import { LoadingDots } from '@/components/ui/LoadingState'
-import type { QAMessage, Citation } from '@/lib/types'
+import {
+  askQuestionStream,
+  deleteConversation,
+  listConversationMessages,
+  listConversations,
+} from '@/lib/api/qa'
+import type { Citation, Conversation, ConversationMessage, QAMessage } from '@/lib/types'
 import { formatConfidence } from '@/lib/utils'
 
-interface Props { projectId: string }
+interface Props {
+  projectId: string
+}
+
+interface ChatTurn {
+  id: string
+  question: string
+  response?: QAMessage
+}
 
 export function QAScreen({ projectId }: Props) {
-  const [question, setQuestion]     = useState('')
-  const [messages, setMessages]     = useState<QAMessage[]>([])
-  const [activeCite, setActiveCite] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const [question, setQuestion] = useState('')
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [turns, setTurns] = useState<ChatTurn[]>([])
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
+  const [showAllConversations, setShowAllConversations] = useState(false)
 
-  const { data: suggested } = useQuery({
-    queryKey: ['qa-suggestions', projectId],
-    queryFn: () => listSuggestedQuestions(projectId),
+  const { data: conversations = [] } = useQuery({
+    queryKey: ['qa-conversations', projectId],
+    queryFn: () => listConversations(projectId),
   })
+
+  const { data: selectedMessages = [] } = useQuery({
+    queryKey: ['qa-messages', projectId, conversationId],
+    queryFn: () => listConversationMessages(projectId, conversationId as string),
+    enabled: Boolean(conversationId),
+  })
+
+  useEffect(() => {
+    if (!conversationId) return
+    setTurns(turnsFromMessages(selectedMessages).reverse())
+  }, [conversationId, selectedMessages])
+
+  const visibleConversations = useMemo(() => {
+    const sorted = [...conversations].sort((a, b) => {
+      const updated = Date.parse(b.updated_at) - Date.parse(a.updated_at)
+      return updated || Date.parse(b.created_at) - Date.parse(a.created_at)
+    })
+    return showAllConversations ? sorted : sorted.slice(0, 5)
+  }, [conversations, showAllConversations])
 
   const askMut = useMutation({
-    mutationFn: (q: string) => askQuestion({ projectId, question: q }),
-    onSuccess: (answer) => {
-      setMessages(prev => [...prev, answer])
+    mutationFn: async (value: string) => {
+      setStreamingStatus('retrieving')
+      return askQuestionStream(
+        {
+          projectId,
+          question: value,
+          conversationId: conversationId ?? undefined,
+        },
+        {
+          onStatus: setStreamingStatus,
+          onAnswer: answer => {
+            setConversationId(answer.conversationId ?? conversationId)
+            setTurns(prev => replacePendingTurn(prev, value, answer))
+          },
+          onDone: () => setStreamingStatus(null),
+        },
+      )
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => {
+      setStreamingStatus(null)
+      toast.error(error.message)
+    },
+    onSuccess: answer => {
+      if (answer?.conversationId) setConversationId(answer.conversationId)
+      queryClient.invalidateQueries({ queryKey: ['qa-conversations', projectId] })
+      if (answer?.conversationId) {
+        queryClient.invalidateQueries({ queryKey: ['qa-messages', projectId, answer.conversationId] })
+      }
+    },
   })
 
-  const handleSubmit = () => {
-    const q = question.trim()
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteConversation(projectId, id),
+    onSuccess: (_, deletedId) => {
+      if (conversationId === deletedId) newChat()
+      queryClient.invalidateQueries({ queryKey: ['qa-conversations', projectId] })
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+
+  function submit(value = question) {
+    const q = value.trim()
     if (!q || askMut.isPending) return
-    setMessages(prev => [...prev, { kind: 'ask', text: q }])
     setQuestion('')
+    setTurns(prev => [{ id: crypto.randomUUID(), question: q }, ...prev])
     askMut.mutate(q)
   }
 
-  const handleSuggested = (q: string) => {
-    setMessages(prev => [...prev, { kind: 'ask', text: q }])
-    askMut.mutate(q)
+  function newChat() {
+    setConversationId(null)
+    setTurns([])
+    setQuestion('')
+    setStreamingStatus(null)
   }
-
-  const lastAnswer = messages.findLast(m => m.kind === 'answer')
 
   return (
-    <div style={{ padding: '24px 32px 64px', maxWidth: '860px' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '20px' }}>
-        <span className="eyebrow">Q & A</span>
-        <h1 style={{ fontSize: '28px', fontWeight: 400, letterSpacing: '-0.012em', color: 'var(--ink)', margin: '4px 0 6px' }}>
-          Ask a question
-        </h1>
-        <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--graphite)' }}>
-          Get cited answers drawn from your knowledge base.
-        </p>
-      </div>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'minmax(760px, 1fr) 360px',
+      gap: 64,
+      padding: '24px 40px 64px 32px',
+    }}>
+      <main>
+        <div style={{ marginBottom: 20 }}>
+          <span className="eyebrow">Q & A</span>
+          <h1 style={{ fontSize: 28, fontWeight: 400, color: 'var(--ink)', margin: '4px 0 6px' }}>
+            Ask a question
+          </h1>
+          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--graphite)' }}>
+            Grounded answers from saved articles and source citations.
+          </p>
+        </div>
 
-      {/* Question input */}
-      <div style={{
-        border: '1px solid var(--rule-strong)',
-        background: 'var(--surface)',
-        borderRadius: '3px',
-        padding: '14px 16px 0',
-        marginBottom: '16px',
-      }}>
-        <textarea
-          placeholder="Ask anything about your documents…"
-          value={question}
-          onChange={e => setQuestion(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit() }}
-          rows={2}
-          style={{
-            width: '100%', border: 0, outline: 0,
-            background: 'transparent',
-            fontFamily: 'var(--f-serif)',
-            fontSize: '18px', lineHeight: 1.45,
-            color: 'var(--ink)', resize: 'vertical',
-            padding: 0, minHeight: '30px',
-          }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--rule-soft)', padding: '10px 0', marginTop: '8px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--slate)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            Searching all articles in this project
-            <span className="kbd">⌘↵</span>
+        <div style={{ border: '1px solid var(--rule-strong)', background: 'var(--surface)', borderRadius: 3, padding: '14px 16px 0', marginBottom: 16 }}>
+          <textarea
+            placeholder="Ask anything about your knowledge base..."
+            value={question}
+            onChange={event => setQuestion(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) submit()
+            }}
+            rows={3}
+            style={{ width: '100%', border: 0, outline: 0, background: 'transparent', fontFamily: 'var(--f-serif)', fontSize: 18, lineHeight: 1.45, color: 'var(--ink)', resize: 'vertical', padding: 0 }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--rule-soft)', padding: '10px 0', marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: 'var(--slate)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {streamingStatus ? statusText(streamingStatus) : 'Searching saved article fragments'}
+              <span className="kbd">⌘↵</span>
+            </div>
+            <button className="btn btn--primary" onClick={() => submit()} disabled={!question.trim() || askMut.isPending}>
+              <Send size={12} /> Ask
+            </button>
           </div>
-          <button
-            className="btn btn--primary"
-            onClick={handleSubmit}
-            disabled={!question.trim() || askMut.isPending}
-          >
-            <Send size={12} /> Ask
+        </div>
+
+        {askMut.isPending && (
+          <div style={{ padding: 18, border: '1px solid var(--rule)', background: 'var(--paper-2)', marginBottom: 16 }}>
+            <span className="eyebrow">{statusText(streamingStatus ?? 'retrieving')}</span>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {turns.map(turn => (
+            <ChatTurnView key={turn.id} turn={turn} projectId={projectId} />
+          ))}
+        </div>
+      </main>
+
+      <aside style={{ borderLeft: '1px solid var(--rule)', paddingLeft: 28 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <span className="eyebrow">Conversations</span>
+          <button className="btn btn--ghost btn--icon" onClick={newChat} title="New chat">
+            <Plus size={14} />
           </button>
         </div>
-      </div>
-
-      {/* Suggested questions (shown only when no history) */}
-      {messages.length === 0 && suggested && suggested.length > 0 && (
-        <div style={{ marginBottom: '28px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--slate)', marginBottom: '6px' }}>Suggested questions</div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {suggested.map((q, i) => (
-              <button
-                key={i}
-                onClick={() => handleSuggested(q)}
-                style={{
-                  appearance: 'none',
-                  border: '1px solid var(--rule)',
-                  background: 'var(--surface)',
-                  padding: '6px 10px',
-                  borderRadius: '3px',
-                  font: 'inherit',
-                  fontFamily: 'var(--f-serif)',
-                  fontSize: '12px',
-                  color: 'var(--ink-2)',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--ink)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--rule)'; (e.currentTarget as HTMLElement).style.color = 'var(--ink-2)' }}
-              >
-                {q}
-              </button>
-            ))}
-          </div>
+        <button className="btn btn--primary" onClick={newChat} style={{ width: '100%', marginBottom: 16 }}>
+          <MessageSquare size={13} /> New chat
+        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {visibleConversations.map(item => (
+            <ConversationItem
+              key={item.id}
+              conversation={item}
+              active={item.id === conversationId}
+              onOpen={() => setConversationId(item.id)}
+              onDelete={() => deleteMut.mutate(item.id)}
+            />
+          ))}
         </div>
-      )}
-
-      {/* Thinking indicator */}
-      {askMut.isPending && (
-        <div style={{ padding: '24px', background: 'var(--paper-2)', border: '1px solid var(--rule)', borderRadius: '3px', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {['Searching fragments…', 'Composing answer…', 'Gathering citations…'].map((step, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                fontSize: '12px', color: 'var(--graphite)',
-                fontFamily: 'var(--f-mono)',
-                animation: `thinkfade 1.5s ease-in-out ${i * 0.3}s infinite`,
-              }}>
-                <LoadingDots />
-                {step}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Conversation messages */}
-      {messages.map((msg, i) => {
-        if (msg.kind === 'ask') return (
-          <div key={i} style={{ borderBottom: '1px dashed var(--rule)', paddingBottom: '16px', marginBottom: '16px' }}>
-            <p style={{ fontFamily: 'var(--f-serif)', fontSize: '19px', lineHeight: 1.4, color: 'var(--ink)', margin: 0, letterSpacing: '-0.007em' }}>
-              {msg.text}
-            </p>
-          </div>
-        )
-
-        if (msg.kind === 'answer' && msg.answer) return (
-          <AnswerBlock
-            key={i}
-            answer={msg.answer}
-            activeCite={activeCite}
-            onCiteClick={setActiveCite}
-            projectId={projectId}
-          />
-        )
-
-        if (msg.kind === 'insufficient') return (
-          <InsufficientContextBlock key={i} />
-        )
-
-        return null
-      })}
+        {conversations.length > 5 && (
+          <button className="btn btn--ghost" style={{ width: '100%', marginTop: 10 }} onClick={() => setShowAllConversations(value => !value)}>
+            {showAllConversations ? 'Show recent' : 'View all'}
+          </button>
+        )}
+      </aside>
     </div>
   )
 }
 
-// ── Answer block ──────────────────────────────────────────────────
-
-function AnswerBlock({ answer, activeCite, onCiteClick, projectId }: {
-  answer: NonNullable<QAMessage['answer']>
-  activeCite: string | null
-  onCiteClick: (id: string | null) => void
-  projectId: string
-}) {
+function ChatTurnView({ turn, projectId }: { turn: ChatTurn; projectId: string }) {
   return (
-    <div style={{ paddingTop: '20px', borderTop: '1px solid var(--rule)' }}>
-      {/* Confidence */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-        <span className="eyebrow">Answer</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10.5px', color: 'var(--graphite)' }}>
-          <span>Confidence</span>
-          <div style={{ display: 'inline-block', width: '80px', height: '4px', background: 'var(--rule-soft)', borderRadius: '1px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${answer.confidence * 100}%`, background: 'var(--moss)' }} />
-          </div>
-          <span>{formatConfidence(answer.confidence)}</span>
-        </div>
-      </div>
+    <section style={{ borderTop: '1px solid var(--rule)', paddingTop: 16 }}>
+      <p style={{ fontFamily: 'var(--f-serif)', fontSize: 19, lineHeight: 1.45, color: 'var(--ink)', margin: '0 0 16px' }}>
+        {turn.question}
+      </p>
+      {turn.response?.answer && (
+        <AnswerBlock message={turn.response} projectId={projectId} />
+      )}
+    </section>
+  )
+}
 
-      {/* Summary */}
-      <p style={{ fontFamily: 'var(--f-serif)', fontSize: '22px', lineHeight: 1.45, color: 'var(--ink)', margin: '0 0 24px', maxWidth: '64ch', letterSpacing: '-0.008em' }}>
+function AnswerBlock({ message, projectId }: { message: QAMessage; projectId: string }) {
+  const [open, setOpen] = useState(false)
+  const answer = message.answer
+  if (!answer) return null
+  const insufficient = message.kind === 'insufficient' || answer.insufficientContext
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{
+          fontFamily: 'var(--f-mono)',
+          fontSize: 11,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          border: '1px solid var(--rule)',
+          background: insufficient ? 'var(--rust-tint)' : 'oklch(0.94 0.04 145)',
+          color: insufficient ? 'oklch(0.45 0.12 32)' : 'var(--moss)',
+          padding: '3px 7px',
+        }}>
+          {insufficient ? 'insufficient' : 'grounded'}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--slate)' }}>
+          confidence {formatConfidence(answer.confidence)} · saved to conversation
+        </span>
+      </div>
+      <p style={{ fontFamily: 'var(--f-serif)', fontSize: 21, lineHeight: 1.5, color: 'var(--ink)', margin: '0 0 14px', maxWidth: '76ch' }}>
         {answer.summary}
       </p>
-
-      {/* Points */}
-      <ul style={{ listStyle: 'none', margin: '0 0 24px', padding: 0, display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '70ch' }}>
-        {answer.points.map((point, i) => {
-          const citeId = answer.citations[i]?.id
-          return (
-            <li key={i} style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: '12px', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: 'var(--slate)', paddingTop: '4px', letterSpacing: '0.06em', borderTop: '1px solid var(--rule)', fontFamily: 'var(--f-mono)' }}>
-                {String(i + 1).padStart(2, '0')}
-              </span>
-              <p style={{ fontFamily: 'var(--f-serif)', fontSize: '14.5px', lineHeight: 1.55, color: 'var(--ink-2)', margin: 0, paddingTop: '4px', borderTop: '1px solid var(--rule)' }}>
-                {point}
-                {citeId && (
-                  <button
-                    onClick={() => onCiteClick(activeCite === citeId ? null : citeId)}
-                    style={{
-                      display: 'inline-flex', appearance: 'none', border: 0,
-                      background: 'var(--highlight)', padding: '0 4px',
-                      marginLeft: '4px', borderRadius: '2px',
-                      fontFamily: 'var(--f-mono)', fontSize: '10.5px',
-                      color: activeCite === citeId ? 'var(--ink)' : 'oklch(0.4 0.12 70)',
-                      cursor: 'pointer', verticalAlign: '1px', lineHeight: 1.4,
-                    }}
-                  >
-                    {i + 1}
-                  </button>
-                )}
-              </p>
-            </li>
-          )
-        })}
-      </ul>
-
-      {/* Citations */}
+      {answer.points.length > 0 && (
+        <ul style={{ margin: '0 0 16px', paddingLeft: 18, color: 'var(--ink-2)' }}>
+          {answer.points.map(point => (
+            <li key={point} style={{ marginBottom: 6 }}>{point}</li>
+          ))}
+        </ul>
+      )}
+      {message.insufficientContext && (
+        <p style={{ fontSize: 13, color: 'var(--graphite)', margin: '0 0 14px' }}>
+          {message.insufficientContext.reason}
+        </p>
+      )}
       {answer.citations.length > 0 && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
-            <span className="eyebrow">Citations</span>
-            <span style={{ fontSize: '10.5px', color: 'var(--slate)' }}>{answer.citations.length} source{answer.citations.length !== 1 ? 's' : ''}</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {answer.citations.map((cite, i) => (
-              <CitationCard
-                key={cite.id}
-                citation={cite}
-                index={i + 1}
-                isActive={activeCite === cite.id}
-                onClick={() => onCiteClick(activeCite === cite.id ? null : cite.id)}
-                projectId={projectId}
-              />
-            ))}
-          </div>
+          <button className="btn btn--ghost" onClick={() => setOpen(value => !value)}>
+            {open ? 'Hide evidence' : 'Show evidence'} · {answer.citations.length}
+          </button>
+          {open && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              {answer.citations.map(citation => (
+                <CitationCard key={citation.id} citation={citation} projectId={projectId} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// ── Citation card ─────────────────────────────────────────────────
-
-function CitationCard({ citation, index, isActive, onClick, projectId }: {
-  citation: Citation
-  index: number
-  isActive: boolean
-  onClick: () => void
-  projectId: string
-}) {
+function CitationCard({ citation, projectId }: { citation: Citation; projectId: string }) {
   return (
-    <div
-      style={{
-        display: 'grid', gridTemplateColumns: '36px minmax(0, 1fr) 32px',
-        gap: '14px', padding: '14px',
-        border: `1px solid ${isActive ? 'var(--highlight-rule)' : 'var(--rule)'}`,
-        background: isActive ? 'var(--highlight)' : 'var(--surface)',
-        borderRadius: '3px', cursor: 'pointer',
-        alignItems: 'flex-start',
-        transition: 'background 0.12s, border-color 0.12s',
-      }}
-      onClick={onClick}
-      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-2)' }}
-      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.borderColor = 'var(--rule)' }}
-    >
-      <span style={{ fontFamily: 'var(--f-mono)', fontSize: '11px', color: 'var(--brass)', paddingTop: '2px' }}>
-        [{index}]
-      </span>
-      <div>
-        <p style={{ fontStyle: 'italic', fontSize: '14px', lineHeight: 1.5, color: 'var(--ink)', marginBottom: '8px', margin: '0 0 8px' }}>
-          "{citation.quote}"
-        </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', fontSize: '11px' }}>
-          <Link href={`/${projectId}/articles/${citation.articleId}`}>
-            <span style={{ color: 'var(--ink)', cursor: 'pointer', borderBottom: '1px solid var(--rule-strong)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <ExternalLink size={10} /> {citation.articleTitle}
+    <div style={{ border: '1px solid var(--rule)', background: 'var(--surface)', padding: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <Link href={`/${projectId}/articles/${citation.articleId}#anchor-block-${citation.block}`}>
+            <span style={{ color: 'var(--ink)', borderBottom: '1px solid var(--rule-strong)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <ExternalLink size={11} /> {citation.articleTitle}
             </span>
           </Link>
-          <span style={{ color: 'var(--whisper)' }}>·</span>
-          <span style={{ color: 'var(--graphite)' }}>{citation.source}</span>
-          {citation.page && (
-            <>
-              <span style={{ color: 'var(--whisper)' }}>·</span>
-              <span style={{ color: 'var(--graphite)' }}>p.{citation.page}</span>
-            </>
+          <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 4 }}>
+            {citation.source} · p.{citation.page || '?'} · score {citation.score.toFixed(2)}
+          </div>
+          {citation.sectionPath && (
+            <div style={{ fontSize: 11, color: 'var(--graphite)', marginTop: 4 }}>{citation.sectionPath}</div>
           )}
-          <span style={{ color: 'var(--whisper)' }}>·</span>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: '10px', color: 'var(--brass)' }}>{citation.fragment}</span>
         </div>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           className="btn btn--ghost btn--icon"
-          onClick={e => { e.stopPropagation(); navigator.clipboard?.writeText(`${citation.source} p.${citation.page} [${citation.fragment}]: "${citation.quote}"`) }}
           title="Copy citation"
+          onClick={() => navigator.clipboard?.writeText(`${citation.source} p.${citation.page}: ${citation.quote}`)}
         >
           <Copy size={12} />
         </button>
       </div>
+      <p style={{ fontFamily: 'var(--f-serif)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink-2)', margin: '10px 0 0' }}>
+        {citation.quote}
+      </p>
     </div>
   )
 }
 
-// ── Insufficient context block ────────────────────────────────────
-
-function InsufficientContextBlock() {
+function ConversationItem({ conversation, active, onOpen, onDelete }: {
+  conversation: Conversation
+  active: boolean
+  onOpen: () => void
+  onDelete: () => void
+}) {
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: '36px 1fr',
-      gap: '16px', padding: '20px 22px',
-      background: 'var(--rust-tint)',
-      border: '1px solid oklch(0.80 0.07 32)',
-      borderTop: '4px solid oklch(0.55 0.13 32)',
-      borderRadius: '0 0 3px 3px',
-      marginTop: '20px',
-    }}>
-      <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface)', border: '1px solid oklch(0.75 0.10 32)', display: 'grid', placeItems: 'center', color: 'oklch(0.45 0.12 32)' }}>
-        <AlertTriangle size={14} />
-      </div>
-      <div>
-        <h3 style={{ fontSize: '18px', margin: '0 0 8px', color: 'oklch(0.38 0.12 32)', fontWeight: 400 }}>Insufficient context</h3>
-        <p style={{ fontSize: '13.5px', color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 0 16px', maxWidth: '70ch' }}>
-          The knowledge base doesn't have enough information to answer this question confidently. Try uploading more relevant sources or rephrasing the question.
-        </p>
-        <div style={{ paddingTop: '12px', borderTop: '1px dashed oklch(0.80 0.06 32)' }}>
-          <div style={{ fontSize: '11px', color: 'var(--slate)', marginBottom: '6px' }}>You might try</div>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
-            <li>Upload more sources covering this topic</li>
-            <li>Check if relevant sources are still processing</li>
-            <li>Try a more specific question</li>
-          </ul>
-        </div>
-      </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px', gap: 6, alignItems: 'center' }}>
+      <button
+        onClick={onOpen}
+        style={{
+          textAlign: 'left',
+          border: `1px solid ${active ? 'var(--rule-strong)' : 'var(--rule)'}`,
+          borderLeft: active ? '3px solid var(--ink)' : '1px solid var(--rule)',
+          background: active ? 'var(--surface)' : 'var(--paper)',
+          color: 'var(--ink)',
+          padding: '9px 10px',
+          cursor: 'pointer',
+        }}
+      >
+        <span style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {conversation.title}
+        </span>
+        <span style={{ display: 'block', fontSize: 10.5, color: 'var(--slate)', marginTop: 3 }}>
+          {conversation.message_count} messages
+        </span>
+      </button>
+      <button className="btn btn--ghost btn--icon" onClick={onDelete} title="Delete conversation">
+        <Trash2 size={12} />
+      </button>
     </div>
   )
+}
+
+function turnsFromMessages(messages: ConversationMessage[]): ChatTurn[] {
+  const turns: ChatTurn[] = []
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index]
+    if (message.role !== 'user') continue
+    const assistant = messages.slice(index + 1).find(item => item.role === 'assistant')
+    turns.push({
+      id: message.id,
+      question: message.content,
+      response: assistant ? responseFromAssistantMessage(assistant) : undefined,
+    })
+  }
+  return turns
+}
+
+function responseFromAssistantMessage(message: ConversationMessage): QAMessage {
+  const meta = message.meta_json ?? {}
+  const citations = Array.isArray(meta.citations)
+    ? meta.citations.map(normalizeStoredCitation).filter((citation): citation is Citation => citation !== null)
+    : []
+  const insufficient = Boolean(meta.insufficient_context)
+  return {
+    kind: insufficient ? 'insufficient' : 'answer',
+    conversationId: message.conversation_id,
+    messageId: message.id,
+    answer: {
+      summary: message.content,
+      points: [],
+      citations,
+      confidence: typeof meta.confidence === 'number' ? meta.confidence : 0,
+      insufficientContext: insufficient,
+    },
+  }
+}
+
+function normalizeStoredCitation(value: unknown): Citation | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const articleId = stringValue(raw.articleId ?? raw.article_id)
+  const block = stringValue(raw.block ?? raw.block_id)
+  const fragment = stringValue(raw.fragment ?? raw.fragment_id)
+  if (!articleId || !block || !fragment) return null
+
+  return {
+    id: stringValue(raw.id) ?? block,
+    articleId,
+    articleTitle: stringValue(raw.articleTitle ?? raw.article_title) ?? 'Article',
+    block,
+    source: stringValue(raw.source) ?? 'Source',
+    page: numberValue(raw.page) ?? 0,
+    sectionPath: stringValue(raw.sectionPath ?? raw.section_path),
+    fragment,
+    quote: stringValue(raw.quote) ?? '',
+    score: numberValue(raw.score) ?? 0,
+  }
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function replacePendingTurn(turns: ChatTurn[], question: string, answer: QAMessage): ChatTurn[] {
+  const [first, ...rest] = turns
+  if (first && first.question === question && !first.response) {
+    return [{ ...first, response: answer }, ...rest]
+  }
+  return [{ id: answer.messageId ?? crypto.randomUUID(), question, response: answer }, ...turns]
+}
+
+function statusText(status: string): string {
+  if (status === 'retrieving') return 'Retrieving evidence'
+  if (status === 'answering') return 'Answering from context'
+  if (status === 'insufficient') return 'Insufficient evidence'
+  return status
 }

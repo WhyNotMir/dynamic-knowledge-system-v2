@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.domain.ingestion.types import ElementType
+from app.models.vector import Vector
 
 if TYPE_CHECKING:
     from app.models.source import Source
@@ -28,6 +29,10 @@ class SourceFragment(Base):
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    embedding_dimension: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    embedding_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     element_type: Mapped[ElementType] = mapped_column(Enum(ElementType), nullable=False)
 

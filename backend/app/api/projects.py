@@ -23,7 +23,12 @@ async def create_project(
     payload: ProjectCreate,
     db: AsyncSession = Depends(get_db),
 ) -> Project:
-    project = await create_project_service(payload.name, payload.description, db)
+    project = await create_project_service(
+        payload.name,
+        payload.description,
+        db,
+        payload.settings,
+    )
     await db.commit()
     return project
 

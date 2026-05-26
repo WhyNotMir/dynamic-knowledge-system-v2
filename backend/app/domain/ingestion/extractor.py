@@ -139,6 +139,15 @@ def _classify_text(
     if label == "list_item":
         return ElementType.LIST_ITEM, None
 
+    if label in {"blockquote", "quote"}:
+        return ElementType.QUOTE, None
+
+    if label in {"code", "code_block"}:
+        return ElementType.CODE_BLOCK, None
+
+    if label == "footnote":
+        return ElementType.FOOTNOTE, None
+
     if label in {"formula", "equation"}:
         return ElementType.FORMULA, None
 

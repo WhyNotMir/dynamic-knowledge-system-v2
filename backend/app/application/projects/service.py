@@ -14,11 +14,13 @@ async def create_project(
     name: str,
     description: str | None,
     db: AsyncSession,
+    settings: dict | None = None,
 ) -> Project:
     projects = ProjectRepository(db)
     return await projects.create(
         name=name,
         description=description,
+        settings=settings,
     )
 
 

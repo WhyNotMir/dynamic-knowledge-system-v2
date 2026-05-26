@@ -17,4 +17,10 @@ class Settings(BaseSettings):
 
     cors_allowed_origins: list[str]
 
+    openai_api_key: str | None = None
+    groq_api_key: str | None = None
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
+    qa_model: str = "llama-3.3-70b-versatile"
+
 settings = Settings()

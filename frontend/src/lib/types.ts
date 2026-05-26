@@ -184,8 +184,10 @@ export interface Citation {
   block: string
   source: string
   page: number
+  sectionPath?: string | null
   fragment: string
   quote: string
+  score: number
 }
 
 export interface QAAnswer {
@@ -193,11 +195,14 @@ export interface QAAnswer {
   points: string[]
   citations: Citation[]
   confidence: number   // 0..1
+  insufficientContext?: boolean
 }
 
 export interface QAMessage {
   kind: 'ask' | 'answer' | 'insufficient'
   text?: string
+  conversationId?: string
+  messageId?: string
   answer?: QAAnswer
   insufficientContext?: InsufficientContextInfo
 }
@@ -211,7 +216,32 @@ export interface InsufficientContextInfo {
 export interface AskQuestionRequest {
   projectId: string
   question: string
-  articleId?: string   // scope to specific article
+  conversationId?: string
+  topK?: number
+  maxPerArticle?: number
+  minScore?: number
+  minEvidenceScore?: number
+  minEvidenceBlocks?: number
+}
+
+export interface Conversation {
+  id: string
+  project_id: string
+  title: string
+  summary?: string | null
+  message_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationMessage {
+  id: string
+  conversation_id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  position_index: number
+  meta_json?: Record<string, unknown> | null
+  created_at: string
 }
 
 // ── Activity ──────────────────────────────────────────────────────

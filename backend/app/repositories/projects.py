@@ -15,8 +15,9 @@ class ProjectRepository:
         *,
         name: str,
         description: str | None,
+        settings: dict | None = None,
     ) -> Project:
-        project = Project(name=name, description=description)
+        project = Project(name=name, description=description, settings=settings)
         self.db.add(project)
         await self.db.flush()
         await self.db.refresh(project)

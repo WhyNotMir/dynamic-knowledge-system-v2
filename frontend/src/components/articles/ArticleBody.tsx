@@ -304,6 +304,7 @@ function Block({
 
   if (block.type === 'eq') return (
     <div
+      id={`anchor-${block.anchor ?? block.id}`}
       onMouseEnter={enter}
       onMouseLeave={leave}
       style={{
@@ -311,6 +312,7 @@ function Block({
         borderLeft: '2px solid var(--rule-strong)',
         display: 'flex', flexDirection: 'column', gap: '8px',
         margin: '4px 0', position: 'relative',
+        scrollMarginTop: '24px',
       }}
     >
       <div style={{ fontFamily: 'var(--f-serif)', fontStyle: 'italic', fontSize: '19px', letterSpacing: '0.005em', color: 'var(--ink)', textAlign: 'center', padding: '4px 0' }}>
@@ -326,9 +328,10 @@ function Block({
 
   if (block.type === 'table') return (
     <figure
+      id={`anchor-${block.anchor ?? block.id}`}
       onMouseEnter={enter}
       onMouseLeave={leave}
-      style={{ margin: '8px 0 12px', overflowX: 'auto' }}
+      style={{ margin: '8px 0 12px', overflowX: 'auto', scrollMarginTop: '24px' }}
     >
       <RenderedTable block={block} />
       {block.caption && (
@@ -341,6 +344,7 @@ function Block({
 
   if (block.type === 'image') return (
     <figure
+      id={`anchor-${block.anchor ?? block.id}`}
       onMouseEnter={enter}
       onMouseLeave={leave}
       style={{
@@ -348,6 +352,7 @@ function Block({
         padding: '14px',
         border: '1px solid var(--rule)',
         background: 'var(--surface)',
+        scrollMarginTop: '24px',
       }}
     >
       <RenderedImage block={block} />
@@ -368,6 +373,7 @@ function Block({
 
   if (block.type === 'caption') return (
     <p
+      id={`anchor-${block.anchor ?? block.id}`}
       onMouseEnter={enter}
       onMouseLeave={leave}
       style={{
@@ -375,6 +381,7 @@ function Block({
         lineHeight: 1.55,
         margin: '-6px 0 4px',
         color: 'var(--slate)',
+        scrollMarginTop: '24px',
       }}
     >
       {block.text}
@@ -383,6 +390,7 @@ function Block({
 
   return (
     <p
+      id={`anchor-${block.anchor ?? block.id}`}
       onMouseEnter={enter}
       onMouseLeave={leave}
       style={{
@@ -391,6 +399,7 @@ function Block({
         lineHeight: 1.65,
         margin: 0,
         color: 'var(--ink)',
+        scrollMarginTop: '24px',
       }}
     >
       {block.text}

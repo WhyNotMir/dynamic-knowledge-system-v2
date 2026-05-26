@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.articles import router as articles_router
 from app.api.inbox import router as inbox_router
 from app.api.projects import router as projects_router
+from app.api.rag import router as rag_router
 from app.api.sources import router as sources_router
 from app.api.structure import router as structure_router
 from app.config import settings
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(structure_router)
     app.include_router(inbox_router)
     app.include_router(articles_router)
+    app.include_router(rag_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
